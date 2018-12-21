@@ -5,6 +5,7 @@
 #include <DHT.h>
 #include <DS3231.h>
 #include <Wire.h>
+#include <PersonalData.h>
 
 //Définition des constantes
 #define DHTPIN 9 //Renseigne la pinouille connectée au DHT
@@ -28,6 +29,9 @@ float consigne = 19.0 ;
 float hysteresis = 1.0 ;
 String meteoMessage = "";
 bool enableProg = false;
+
+PersonalData PersonalData;
+String phoneNumber = PersonalData.getPhoneNumber();
 
 
 void setup() {
@@ -55,10 +59,14 @@ void setup() {
   delay(1000);
   Serial.println("Ok");
 
+  if(DEBUG) {// Test de la configuration du numéro de téléphone
+    Serial.print("Le numéro de téléphone que doit appeler l'Arduino est :");
+    Serial.print(phoneNumber);
+    Serial.println(".");
+  }
+
   sendStatus();
 }
-
-
 
 void loop() {
   if (gsm.available() > 0) {
@@ -83,7 +91,7 @@ void loop() {
       sendMessage("Programme inactif");
     }
 
-    delay(1000);
+    delay(100);
   }
   if (enableProg) {
       heatingProg();
@@ -102,12 +110,15 @@ void heatingProg(){
   if ((temp.toFloat() > (consigne + 0.5*hysteresis)) && RelayOn) {
     turnOff();
     Serial.print(temp);
-
   }
+  delay(1000);//On ne vérifie la temp que toutes les secondes.
 }
 
 void sendMessage(String message) {
-  gsm.println("AT+CMGS=\"+33684437671\""); // RECEIVER: change the phone number here with international code
+  gsm.print("AT+CMGS=\"");
+  gsm.print(phoneNumber);
+  gsm.println("\"");
+   // RECEIVER: change the phone number here with international code
   delay(500);
   gsm.print(message);
   gsm.write( 0x1a ); //Permet l'envoi du sms
@@ -119,7 +130,9 @@ void turnOn() {
   // Turn on RELAY and save current state
   digitalWrite(RELAY, HIGH);
   RelayOn = true;
-  gsm.println("AT+CMGS=\"+33684437671\""); // RECEIVER: change the phone number here with international code
+  gsm.print("AT+CMGS=\"");
+  gsm.print(phoneNumber);
+  gsm.println("\"");
   delay(500);
   gsm.print("RELAY has been switched ON.\r");
   gsm.write( 0x1a ); //Permet l'envoi du sms
@@ -127,12 +140,18 @@ void turnOn() {
 }
 
 void turnOff() {
-  // Turn off RELAY and save current state
-  digitalWrite(RELAY, LOW);
-  RelayOn = false;
-  gsm.println("AT+CMGS=\"+33684437671\""); /// RECEIVER: change the phone number here with international code
+  gsm.print("AT+CMGS=\"");
+  gsm.print(phoneNumber);
+  gsm.println("\"");
   delay(500);
-  gsm.print("RELAY has been switched OFF.\r");
+  if (enableProg) {
+    gsm.println("Program is still enabled !!");
+  } else {
+    // Turn off RELAY and save current state
+    gsm.println("RELAY has been switched OFF.");
+    digitalWrite(RELAY, LOW);
+    RelayOn = false;
+  } //Emet une alerte si le programme est toujours actif
   gsm.write( 0x1a ); //Permet l'envoi du sms
 }
 
@@ -142,8 +161,9 @@ void sendStatus() {
     Serial.println(getMeteo());
   }
 
-
-  gsm.println("AT+CMGS=\"+33684437671\""); // RECEIVER: change the phone number here with international code
+  gsm.print("AT+CMGS=\"");
+  gsm.print(phoneNumber);
+  gsm.println("\"");
   delay(500);
   gsm.print("RELAY is currently ");
   gsm.println(RelayOn ? "ON" : "OFF"); // This is to show if the light is currently switched on or off
