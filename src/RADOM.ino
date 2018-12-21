@@ -30,9 +30,6 @@ String meteoMessage = "";
 bool enableProg = false;
 
 
-
-
-
 void setup() {
   // Start the I2C interface
   Wire.begin();
