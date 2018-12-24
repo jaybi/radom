@@ -7,33 +7,48 @@
 #include <Wire.h>
 #include <PersonalData.h>
 
+
 //Définition des constantes
-#define DHTPIN 9 //Renseigne la pinouille connectée au DHT
-#define DHTTYPE DHT11 // Remplir avec DHT11 ou DHT22 en fonction
-#define RELAY 13 // Pin connectée au relai
 SoftwareSerial gsm(10, 11); // Pins TX,RX du Arduino
 
 //Déclaration des variables
 String textMessage;
+String meteoMessage = "";
+
+//Configuration et gestion du relai
+#define RELAY 13 // Pin connectée au relai
 bool RelayOn;
-//const int RELAY = 13; //If you're using a RELAY to switch, if not reverse all HIGH and LOW on the code
+
+//Variable et constantes pour la gestion du DHT
+#define DHTPIN 9 //Renseigne la pinouille connectée au DHT
+#define DHTTYPE DHT11 // Remplir avec DHT11 ou DHT22 en fonction
 DHT dht(DHTPIN, DHTTYPE);
+
+//Variables pour la gestion du temps
 DS3231 Clock;
 bool Century=false;
 bool h12;
 bool PM;
-//Permet d'afficher le mode débug dans la console
-bool DEBUG = false;
 
-float consigne = 19.0 ;
-float hysteresis = 1.0 ;
-String meteoMessage = "";
+//MODE DEBUG
+//Permet d'afficher le mode débug dans la console
+//Beaucoup plus d'infos apparaissent
+#define DEBUG 0 // 0 pour désactivé et 1 pour activé
+
+//Programmation de la consigne de Programmation
+//TODO : passer en constante tant que le code ne permet
+//pas de le modifier
+//float consigne = 19.0 ;
+//float hysteresis = 1.0 ;
+#define consigne 19.0
+#define hysteresis 1.0
 bool enableProg = false;
 
+//Récupération des données privées qui ne sont pas uploadées dans GITHUB
 PersonalData PersonalData;
 String phoneNumber = PersonalData.getPhoneNumber();
 
-
+/*SETUP************************************************************************/
 void setup() {
   // Start the I2C interface
   Wire.begin();
@@ -50,8 +65,7 @@ void setup() {
   Serial.begin(9600);
   //Demarrage GSM
   gsm.begin(9600);
-
-  delay(5000);
+  delay(5000);//Attente accrochage réseau
   Serial.println("gsm ready...\r\n");
   gsm.println("AT+CMGF=1\r\n");
   delay(1000);
@@ -64,10 +78,10 @@ void setup() {
     Serial.print(phoneNumber);
     Serial.println(".");
   }
-
-  sendStatus();
+  sendStatus(); //Envoie un SMS avec le statut
 }
 
+/*LOOP************************************************************************/
 void loop() {
   if (gsm.available() > 0) {
     textMessage = gsm.readString();
@@ -98,6 +112,7 @@ void loop() {
   }
 }
 
+/* FUNCTIONS ******************************************************************/
 void heatingProg(){
   meteoMessage = getMeteo();
   int index = meteoMessage.indexOf("Temp: ");
