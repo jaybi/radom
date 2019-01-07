@@ -13,14 +13,17 @@ SoftwareSerial gsm(10, 11); // Pins TX,RX du Arduino
 //Déclaration des variables
 String textMessage;
 String meteoMessage = "";
+String consigneKeyWord = "Consigne ";
+String newConsigneMessagePrefix = "La nouvelle consigne est de ";
+int compteur = 0;
 
 //Configuration et gestion du relai
-#define RELAY 13 // Pin connectée au relai
-bool RelayOn;
+#define RELAY 12 // Pin connectée au relai
+bool HeatingOn;
 
 //Variable et constantes pour la gestion du DHT
 #define DHTPIN 9 //Renseigne la pinouille connectée au DHT
-#define DHTTYPE DHT11 // Remplir avec DHT11 ou DHT22 en fonction
+#define DHTTYPE DHT22 // Remplir avec DHT11 ou DHT22 en fonction
 DHT dht(DHTPIN, DHTTYPE);
 
 //Variables pour la gestion du temps
@@ -32,16 +35,13 @@ bool PM;
 //MODE DEBUG
 //Permet d'afficher le mode débug dans la console
 //Beaucoup plus d'infos apparaissent
-#define DEBUG 0 // 0 pour désactivé et 1 pour activé
+#define DEBUG 1 // 0 pour désactivé et 1 pour activé
 
 //Programmation de la consigne de Programmation
-//TODO : passer en constante tant que le code ne permet
-//pas de le modifier
-//float consigne = 19.0 ;
-//float hysteresis = 1.0 ;
-#define consigne 19.0
-#define hysteresis 1.0 
+#define hysteresis 1.0
 bool enableProg = false;
+float consigne = 19.0 ;
+float newConsigne = 1.0;
 
 //Récupération des données privées qui ne sont pas uploadées dans GITHUB
 PersonalData PersonalData;
@@ -55,8 +55,8 @@ void setup() {
   pinMode(RELAY, OUTPUT);
   /* Place la broche du capteur en entrée avec pull-up */
   pinMode(DHTPIN, INPUT_PULLUP);
-  digitalWrite(RELAY, HIGH); // The current state of the light is ON
-  RelayOn = true;
+  digitalWrite(RELAY, HIGH); // The current state of the relay is Off Passant à l'état repos (connecté en mode normalement fermé NC)
+  HeatingOn = false;
 
   //Demarrage du DHT
   dht.begin();
@@ -102,8 +102,11 @@ void loop() {
     } else if (textMessage.indexOf("Progoff") >= 0) {
       enableProg = false;
       sendMessage("Programme inactif");
+    } else if (textMessage.indexOf(consigneKeyWord) >= 0) { //Mot clé de changement de consigne trouvé dans le SMS
+      setConsigne(textMessage, textMessage.indexOf(consigneKeyWord));
     }
 
+    textMessage="";
     delay(100);
   }
   if (enableProg) {
@@ -112,17 +115,49 @@ void loop() {
 }
 
 /* FUNCTIONS ******************************************************************/
+void setConsigne(String message, int indexConsigne) {
+  compteur++;
+  Serial.print("compteur :");
+  Serial.println(compteur);
+
+  newConsigne = message.substring(indexConsigne + consigneKeyWord.length(), message.length()).toFloat(); // On extrait la valeur et on la cast en float
+  Serial.print("nouvelle consigne :");
+  Serial.println(newConsigne);
+  if (!newConsigne) {// Gestion de l'erreur de lecture et remontée du bug
+    if (DEBUG) {
+      Serial.println("Impossible d'effectuer la conversion de la température String -> Float. Mauvais mot-clé? Mauvais index?");
+      Serial.print("indexConsigne = ");
+      Serial.println(indexConsigne);
+      Serial.print("consigne lenght (>0)= ");
+      Serial.println(message.length()- indexConsigne + consigneKeyWord.length());
+      Serial.print("newConsigne = ");
+      Serial.println(newConsigne);
+    } else {
+    sendMessage("Erreur de lecture de la consigne envoyee");
+    }
+  } else if (consigne != newConsigne) { //Si tout se passe bien et la consigne est différente la consigne actuelle
+    consigne = newConsigne;
+    message = newConsigneMessagePrefix;
+    message.concat(consigne);
+    sendMessage(message);
+    //TODO: activer la programmation
+  } else {
+    sendMessage("Cette consigne est deja enregistree");
+    //TODO: activer la programmation
+  }
+}
+
 void heatingProg(){
   meteoMessage = getMeteo();
   int index = meteoMessage.indexOf("Temp: ");
   String temp = meteoMessage.substring(index+6, index+11);
-  if ((temp.toFloat() < (consigne - 0.5*hysteresis)) && !RelayOn) {
-    turnOn();
+  if ((temp.toFloat() < (consigne - 0.5*hysteresis)) && !HeatingOn) {
+    turnOnWithoutMessage();
     Serial.print(temp);
 
   }
-  if ((temp.toFloat() > (consigne + 0.5*hysteresis)) && RelayOn) {
-    turnOff();
+  if ((temp.toFloat() > (consigne + 0.5*hysteresis)) && HeatingOn) {
+    turnOffWithoutMessage();
     Serial.print(temp);
   }
   delay(1000);//On ne vérifie la temp que toutes les secondes.
@@ -139,18 +174,26 @@ void sendMessage(String message) {
 }
 
 
-
 void turnOn() {
-  // Turn on RELAY and save current state
-  digitalWrite(RELAY, HIGH);
-  RelayOn = true;
   gsm.print("AT+CMGS=\"");
   gsm.print(phoneNumber);
   gsm.println("\"");
   delay(500);
-  gsm.print("RELAY has been switched ON.\r");
+  if (enableProg) {
+    gsm.println("Le programme est toujours actif !!");
+  } else {
+    // Turn on RELAY and save current state
+    gsm.println("Chauffage en marche.");
+    digitalWrite(RELAY, LOW);
+    HeatingOn = true;
+  }
   gsm.write( 0x1a ); //Permet l'envoi du sms
-  getMeteo();
+}
+
+void turnOnWithoutMessage() {
+  // Turn on RELAY and save current state
+  digitalWrite(RELAY, LOW);
+  HeatingOn = true;
 }
 
 void turnOff() {
@@ -159,14 +202,20 @@ void turnOff() {
   gsm.println("\"");
   delay(500);
   if (enableProg) {
-    gsm.println("Program is still enabled !!");
+    gsm.println("Le programme est toujours actif !!");
   } else {
     // Turn off RELAY and save current state
-    gsm.println("RELAY has been switched OFF.");
-    digitalWrite(RELAY, LOW);
-    RelayOn = false;
+    gsm.println("Le chauffage est eteint.");
+    digitalWrite(RELAY, HIGH);
+    HeatingOn = false;
   } //Emet une alerte si le programme est toujours actif
   gsm.write( 0x1a ); //Permet l'envoi du sms
+}
+
+void turnOffWithoutMessage() {
+  // Turn on RELAY and save current state
+  digitalWrite(RELAY, HIGH);
+  HeatingOn = false;
 }
 
 void sendStatus() {
@@ -179,8 +228,8 @@ void sendStatus() {
   gsm.print(phoneNumber);
   gsm.println("\"");
   delay(500);
-  gsm.print("RELAY is currently ");
-  gsm.println(RelayOn ? "ON" : "OFF"); // This is to show if the light is currently switched on or off
+  gsm.print("Le chauffage est actuellement ");
+  gsm.println(HeatingOn ? "ON" : "OFF"); // This is to show if the light is currently switched on or off
   gsm.println(getMeteo());
   gsm.println(getDate());
   gsm.write( 0x1a );
@@ -207,21 +256,19 @@ String getMeteo() {
   float hic = dht.computeHeatIndex(t, h, false);
 
   if (DEBUG) {
-    Serial.print("Humidity: ");
+    Serial.print("Humidite: ");
     Serial.print(h);
     Serial.print(" %\t");
     Serial.print("Temperature: ");
     Serial.print(t);
     Serial.println(" *C ");
   }
-
   meteo += "Hyg: ";
   meteo += h;
   meteo += " % ";
   meteo += "Temp: ";
   meteo += t;
   meteo += " *C";
-
   return meteo;
 }
 
