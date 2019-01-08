@@ -15,6 +15,7 @@ String textMessage;
 String meteoMessage = "";
 String consigneKeyWord = "Consigne ";
 String newConsigneMessagePrefix = "La nouvelle consigne est de ";
+#define LED 13
 
 //Configuration et gestion du relai
 #define RELAY 12 // Pin connectée au relai
@@ -59,6 +60,7 @@ void setup() {
   /* Place la broche du capteur en entrée avec pull-up */
   pinMode(DHTPIN, INPUT_PULLUP);
   pinMode(COMMUN_NON_PRESENT, INPUT_PULLUP);
+  pinMode(LED, OUTPUT);
   digitalWrite(RELAY, HIGH); // The current state of the relay is Off Passant à l'état repos (connecté en mode normalement fermé NC)
   HeatingOn = false;
 
@@ -92,7 +94,6 @@ void loop() {
       Serial.print(textMessage);
     }
   }
-
   if (textMessage.indexOf("+CMT:") > 0 ){ // SMS arrived
     if (textMessage.indexOf("Ron") >= 0) { //If you sent "ON" the lights will turn on
       turnOn();
@@ -103,21 +104,21 @@ void loop() {
     } else if (textMessage.indexOf("Progon") >= 0) {
       enableProg = true;
       sendMessage("Programme actif");
+      digitalWrite(LED, HIGH);
     } else if (textMessage.indexOf("Progoff") >= 0) {
       enableProg = false;
       sendMessage("Programme inactif");
+      digitalWrite(LED, LOW);
       turnOff();
     } else if (textMessage.indexOf(consigneKeyWord) >= 0) { //Mot clé de changement de consigne trouvé dans le SMS
       setConsigne(textMessage, textMessage.indexOf(consigneKeyWord));
     }
-
     textMessage="";
     delay(100);
   }
   if (enableProg) {
       heatingProg();
   }
-
   if (!digitalRead(COMMUN_NON_PRESENT) && (previousState == HIGH)) { // si commun present et état précedent non présent
     if (!HeatingOn) {
       digitalWrite(RELAY, LOW); // Relai passant
@@ -126,7 +127,6 @@ void loop() {
         Serial.println("Marche forcée secteur commun activée");
       }
     }
-
   }
   if (digitalRead(COMMUN_NON_PRESENT)) { // si plus de commun
     if (!HeatingOn) { // et si pas de chauffage en cours
@@ -194,7 +194,6 @@ void sendMessage(String message) {
   gsm.write( 0x1a ); //Permet l'envoi du sms
 }
 
-
 void turnOn() {
   gsm.print("AT+CMGS=\"");
   gsm.print(phoneNumber);
@@ -238,6 +237,7 @@ void turnOffWithoutMessage() {
   // Turn on RELAY and save current state
   digitalWrite(RELAY, HIGH);
   HeatingOn = false;
+  previousState = HIGH;
 }
 
 void sendStatus() {
@@ -245,7 +245,6 @@ void sendStatus() {
     Serial.println(getDate());
     Serial.println(getMeteo());
   }
-
   gsm.print("AT+CMGS=\"");
   gsm.print(phoneNumber);
   gsm.println("\"");
