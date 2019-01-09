@@ -15,7 +15,7 @@ String textMessage;
 String meteoMessage = "";
 String consigneKeyWord = "Consigne ";
 String newConsigneMessagePrefix = "La nouvelle consigne est de ";
-int compteur = 0;
+#define LED 13
 
 //Configuration et gestion du relai
 #define RELAY 12 // Pin connectée au relai
@@ -32,10 +32,14 @@ bool Century=false;
 bool h12;
 bool PM;
 
+//Config de la pin de presence de secteur commun
+#define COMMUN_NON_PRESENT 6
+int previousState = HIGH;
+
 //MODE DEBUG
 //Permet d'afficher le mode débug dans la console
 //Beaucoup plus d'infos apparaissent
-#define DEBUG 1 // 0 pour désactivé et 1 pour activé
+#define DEBUG 0 // 0 pour désactivé et 1 pour activé
 
 //Programmation de la consigne de Programmation
 #define hysteresis 1.0
@@ -55,6 +59,8 @@ void setup() {
   pinMode(RELAY, OUTPUT);
   /* Place la broche du capteur en entrée avec pull-up */
   pinMode(DHTPIN, INPUT_PULLUP);
+  pinMode(COMMUN_NON_PRESENT, INPUT_PULLUP);
+  pinMode(LED, OUTPUT);
   digitalWrite(RELAY, HIGH); // The current state of the relay is Off Passant à l'état repos (connecté en mode normalement fermé NC)
   HeatingOn = false;
 
@@ -88,7 +94,6 @@ void loop() {
       Serial.print(textMessage);
     }
   }
-
   if (textMessage.indexOf("+CMT:") > 0 ){ // SMS arrived
     if (textMessage.indexOf("Ron") >= 0) { //If you sent "ON" the lights will turn on
       turnOn();
@@ -99,27 +104,43 @@ void loop() {
     } else if (textMessage.indexOf("Progon") >= 0) {
       enableProg = true;
       sendMessage("Programme actif");
+      digitalWrite(LED, HIGH);
     } else if (textMessage.indexOf("Progoff") >= 0) {
       enableProg = false;
       sendMessage("Programme inactif");
+      digitalWrite(LED, LOW);
+      turnOff();
     } else if (textMessage.indexOf(consigneKeyWord) >= 0) { //Mot clé de changement de consigne trouvé dans le SMS
       setConsigne(textMessage, textMessage.indexOf(consigneKeyWord));
     }
-
     textMessage="";
     delay(100);
   }
   if (enableProg) {
       heatingProg();
   }
+  if (!digitalRead(COMMUN_NON_PRESENT) && (previousState == HIGH)) { // si commun present et état précedent non présent
+    if (!HeatingOn) {
+      digitalWrite(RELAY, LOW); // Relai passant
+      previousState = LOW;
+      if (DEBUG) {
+        Serial.println("Marche forcée secteur commun activée");
+      }
+    }
+  }
+  if (digitalRead(COMMUN_NON_PRESENT)) { // si plus de commun
+    if (!HeatingOn) { // et si pas de chauffage en cours
+      digitalWrite(RELAY, HIGH); // Relai bloqué
+      previousState = HIGH;
+      if (DEBUG) {
+        Serial.println("Marche forcée secteur commun désactivée");
+      }
+    }
+  }
 }
 
 /* FUNCTIONS ******************************************************************/
 void setConsigne(String message, int indexConsigne) {
-  compteur++;
-  Serial.print("compteur :");
-  Serial.println(compteur);
-
   newConsigne = message.substring(indexConsigne + consigneKeyWord.length(), message.length()).toFloat(); // On extrait la valeur et on la cast en float
   Serial.print("nouvelle consigne :");
   Serial.println(newConsigne);
@@ -133,7 +154,7 @@ void setConsigne(String message, int indexConsigne) {
       Serial.print("newConsigne = ");
       Serial.println(newConsigne);
     } else {
-    sendMessage("Erreur de lecture de la consigne envoyee");
+      sendMessage("Erreur de lecture de la consigne envoyee");
     }
   } else if (consigne != newConsigne) { //Si tout se passe bien et la consigne est différente la consigne actuelle
     consigne = newConsigne;
@@ -173,7 +194,6 @@ void sendMessage(String message) {
   gsm.write( 0x1a ); //Permet l'envoi du sms
 }
 
-
 void turnOn() {
   gsm.print("AT+CMGS=\"");
   gsm.print(phoneNumber);
@@ -210,12 +230,14 @@ void turnOff() {
     HeatingOn = false;
   } //Emet une alerte si le programme est toujours actif
   gsm.write( 0x1a ); //Permet l'envoi du sms
+  previousState = HIGH;
 }
 
 void turnOffWithoutMessage() {
   // Turn on RELAY and save current state
   digitalWrite(RELAY, HIGH);
   HeatingOn = false;
+  previousState = HIGH;
 }
 
 void sendStatus() {
@@ -223,7 +245,6 @@ void sendStatus() {
     Serial.println(getDate());
     Serial.println(getMeteo());
   }
-
   gsm.print("AT+CMGS=\"");
   gsm.print(phoneNumber);
   gsm.println("\"");
