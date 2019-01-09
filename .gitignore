@@ -7,3 +7,4 @@
 platformio.ini
 /lib/PersonalData
 /test
+/lib/AT24C32_TEST/Examples
