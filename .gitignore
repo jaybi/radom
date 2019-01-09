@@ -3,7 +3,6 @@
 .piolibdeps
 .clang_complete
 .gcc-flags.json
-.travis.yml
 platformio.ini
 /lib/PersonalData/
 /lib/AT24C32_TEST/Examples/
