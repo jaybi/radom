@@ -4,3 +4,5 @@
 .clang_complete
 .gcc-flags.json
 /lib/PersonalData
+
+/lib/AT24C32_TEST/Examples
