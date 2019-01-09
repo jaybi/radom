@@ -5,6 +5,6 @@
 .gcc-flags.json
 .travis.yml
 platformio.ini
-/lib/PersonalData
-/lib/AT24C32_TEST/Examples
-/test
+/lib/PersonalData/
+/lib/AT24C32_TEST/Examples/
+/test/
