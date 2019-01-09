@@ -3,4 +3,8 @@
 .piolibdeps
 .clang_complete
 .gcc-flags.json
+
+.travis.yml
+platformio.ini
 /lib/PersonalData
+/test
