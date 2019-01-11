@@ -26,25 +26,29 @@ void sendStatus() ;
 void i2c_eeprom_write_byte( int deviceaddress, unsigned int eeaddress, byte data );
 byte i2c_eeprom_read_byte( int deviceaddress, unsigned int eeaddress );
 void eepromWriteData(float value);
-float eepromReadData();
+float eepromReadSavedConsigne();
+int getBijunctionState();
 
 //Définition des pinouts
-#define COMMUN_NON_PRESENT 6
-#define DHTPIN 9 //Renseigne la pinouille connectée au DHT
+#define BIJUNCTION_PIN 6
+enum {
+  ENABLED = 1,
+  DISABLED = 0
+};
+#define DHT_PIN 9 //Renseigne la pinouille connectée au DHT
 SoftwareSerial gsm(10, 11); // Pins TX,RX du Arduino
-#define RELAY 12 // Pin connectée au relai
-#define LED 13
+#define RELAY_PIN 12 // Pin connectée au relai
+#define LED_PIN 13
 //pin 4,5 -> I2C DS3231
 
 //Variables de texte
 String textMessage;
 String meteoMessage = "";
 String consigneKeyWord = "Consigne ";
-String newConsigneMessagePrefix = "La nouvelle consigne est de ";
 
 //Variable et constantes pour la gestion du DHT
 #define DHTTYPE DHT22 // Remplir avec DHT11 ou DHT22 en fonction
-DHT dht(DHTPIN, DHTTYPE);
+DHT dht(DHT_PIN, DHTTYPE);
 
 //Variables pour la gestion du temps
 DS3231 Clock;
@@ -53,9 +57,9 @@ bool h12;
 bool PM;
 
 //Variables de mémorisation d'état
-int previousState = HIGH; // Etat de présence précédent du secteur commun
-bool HeatingOn; // Variable d'état du relais (et du chauffage)
-bool enableProg = false; // Programmation active ou non
+int previousState = ENABLED; // Etat de présence précédent du secteur commun
+int heating; // Variable d'état du relais (et du chauffage)
+int program = DISABLED; // Programmation active ou non
 
 //Programmation de la consigne de Programmation
 #define hysteresis 1.0
@@ -77,13 +81,13 @@ void setup() {
   // Start the I2C interface
   Wire.begin();
   //Configuration des I/O
-  pinMode(RELAY, OUTPUT);
+  pinMode(RELAY_PIN, OUTPUT);
   /* Place la broche du capteur en entrée avec pull-up */
-  pinMode(DHTPIN, INPUT_PULLUP);
-  pinMode(COMMUN_NON_PRESENT, INPUT_PULLUP);
-  pinMode(LED, OUTPUT);
-  digitalWrite(RELAY, HIGH); // The current state of the relay is Off Passant à l'état repos (connecté en mode normalement fermé NC)
-  HeatingOn = false;
+  pinMode(DHT_PIN, INPUT_PULLUP);
+  pinMode(BIJUNCTION_PIN, INPUT_PULLUP);
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(RELAY_PIN, HIGH); // The current state of the RELAY_PIN is Off Passant à l'état repos (connecté en mode normalement fermé NC)
+  heating = false;
 
   //Récupération de la consigne enregistrée
   consigne = eepromReadSavedConsigne();
@@ -126,13 +130,13 @@ void loop() {
   } else if (textMessage.indexOf("Status") >= 0) {
     sendStatus();
   } else if (textMessage.indexOf("Progon") >= 0) {
-    enableProg = true;
+    program = ENABLED;
     sendMessage("Programme actif");
-    digitalWrite(LED, HIGH);
+    digitalWrite(LED_PIN, HIGH);
   } else if (textMessage.indexOf("Progoff") >= 0) {
-    enableProg = false;
+    program = DISABLED;
     sendMessage("Programme inactif");
-    digitalWrite(LED, LOW);
+    digitalWrite(LED_PIN, LOW);
     turnOff();
   } else if (textMessage.indexOf(consigneKeyWord) >= 0) { //Mot clé de changement de consigne trouvé dans le SMS
     setConsigne(textMessage, textMessage.indexOf(consigneKeyWord));
@@ -140,22 +144,24 @@ void loop() {
   textMessage="";
   delay(100);
   }
-  if (enableProg) {
+  if (program) {
     heatingProg();
   }
-  if (!digitalRead(COMMUN_NON_PRESENT) && (previousState == HIGH)) { // si commun present et état précedent non présent
-    if (!HeatingOn) {
-      digitalWrite(RELAY, LOW); // Relai passant
-      previousState = LOW;
+
+  int bijunction = getBijunctionState();
+  if ((bijunction == ENABLED) && (previousState == ENABLED)) { // si commun present et état précedent non présent
+    if (heating == DISABLED) {
+      digitalWrite(RELAY_PIN, LOW); // Relai passant
+      previousState = DISABLED;
       if (DEBUG) {
         Serial.println("Marche forcée secteur commun activée");
       }
     }
   }
-  if (digitalRead(COMMUN_NON_PRESENT) && (previousState == LOW)) { // si plus de commun
-    if (!HeatingOn) { // et si pas de chauffage en cours
-      digitalWrite(RELAY, HIGH); // Relai bloqué
-      previousState = HIGH;
+  if ((bijunction == DISABLED) && (previousState == DISABLED)) { // si plus de commun
+    if (heating == DISABLED) { // et si pas de chauffage en cours
+      digitalWrite(RELAY_PIN, HIGH); // Relai bloqué
+      previousState = ENABLED;
       if (DEBUG) {
         Serial.println("Marche forcée secteur commun désactivée");
       }
@@ -193,7 +199,7 @@ void setConsigne(String message, int indexConsigne) {
     }
   } else if (consigne != newConsigne) { //Si tout se passe bien et la consigne est différente la consigne actuelle
     consigne = newConsigne;
-    message = newConsigneMessagePrefix;
+    message = "La nouvelle consigne est de ";
     message.concat(consigne);
     sendMessage(message);
     eepromWriteData(consigne);//Enregistrement dans l'EEPROM
@@ -210,14 +216,14 @@ void heatingProg(){
   meteoMessage = getMeteo();
   int index = meteoMessage.indexOf("Temp: ");
   String temp = meteoMessage.substring(index+6, index+11);
-  if ((temp.toFloat() < (consigne - 0.5*hysteresis)) && !HeatingOn) {
+  if ((temp.toFloat() < (consigne - 0.5*hysteresis)) && (heating == DISABLED)) {
     turnOnWithoutMessage();
     if (DEBUG) {
       Serial.print(temp);
     }
 
   }
-  if ((temp.toFloat() > (consigne + 0.5*hysteresis)) && HeatingOn) {
+  if ((temp.toFloat() > (consigne + 0.5*hysteresis)) && (heating == ENABLED)) {
     turnOffWithoutMessage();
     if (DEBUG) {
       Serial.print(temp);
@@ -232,22 +238,22 @@ void turnOn() {
   gsm.print(phoneNumber);
   gsm.println("\"");
   delay(500);
-  if (enableProg) {
+  if (program) {
     gsm.println("Le programme est toujours actif !!");
   } else {
-    // Turn on RELAY and save current state
+    // Turn on RELAY_PIN and save current state
     gsm.println("Chauffage en marche.");
-    digitalWrite(RELAY, LOW);
-    HeatingOn = true;
+    digitalWrite(RELAY_PIN, LOW);
+    heating = ENABLED;
   }
   gsm.write( 0x1a ); //Permet l'envoi du sms
 }
 
 //allumage du radiateur si pas de consigne
 void turnOnWithoutMessage() {
-  // Turn on RELAY and save current state
-  digitalWrite(RELAY, LOW);
-  HeatingOn = true;
+  // Turn on RELAY_PIN and save current state
+  digitalWrite(RELAY_PIN, LOW);
+  heating = ENABLED;
 }
 
 //Extinction du rad si pas de consigne et envoie de SMS
@@ -256,24 +262,24 @@ void turnOff() {
   gsm.print(phoneNumber);
   gsm.println("\"");
   delay(500);
-  if (enableProg) {
+  if (program) {
     gsm.println("Le programme est toujours actif !!");
   } else {
-    // Turn off RELAY and save current state
+    // Turn off RELAY_PIN and save current state
     gsm.println("Le chauffage est eteint.");
-    digitalWrite(RELAY, HIGH);
-    HeatingOn = false;
+    digitalWrite(RELAY_PIN, HIGH);
+    heating = DISABLED;
   } //Emet une alerte si le programme est toujours actif
   gsm.write( 0x1a ); //Permet l'envoi du sms
-  previousState = HIGH;
+  previousState = ENABLED;
 }
 
 //Extinction du rad si pas de consigne
 void turnOffWithoutMessage() {
-  // Turn on RELAY and save current state
-  digitalWrite(RELAY, HIGH);
-  HeatingOn = false;
-  previousState = HIGH;
+  // Turn on RELAY_PIN and save current state
+  digitalWrite(RELAY_PIN, HIGH);
+  heating = DISABLED;
+  previousState = ENABLED;
 }
 
 //Renvoie un message météo
@@ -339,33 +345,33 @@ String getDate() {
     Serial.print("2");
     if (Century) {      // Won't need this for 89 years.
     Serial.print("1");
-  } else {
-    Serial.print("0");
-  }
-  Serial.print(Clock.getYear(), DEC);
-  Serial.print(' ');
-  Serial.print(Clock.getMonth(Century), DEC);
-  Serial.print(' ');
-  Serial.print(Clock.getDate(), DEC);
-  Serial.print(' ');
-  Serial.print(Clock.getDoW(), DEC);
-  Serial.print(' ');
-  Serial.print(Clock.getHour(h12, PM), DEC);
-  Serial.print(' ');
-  Serial.print(Clock.getMinute(), DEC);
-  Serial.print(' ');
-  Serial.print(Clock.getSecond(), DEC);
-  if (h12) {
-    if (PM) {
-      Serial.print(" PM ");
     } else {
-      Serial.print(" AM ");
+      Serial.print("0");
     }
-  } else {
-    Serial.println(" 24h ");
+    Serial.print(Clock.getYear(), DEC);
+    Serial.print(' ');
+    Serial.print(Clock.getMonth(Century), DEC);
+    Serial.print(' ');
+    Serial.print(Clock.getDate(), DEC);
+    Serial.print(' ');
+    Serial.print(Clock.getDoW(), DEC);
+    Serial.print(' ');
+    Serial.print(Clock.getHour(h12, PM), DEC);
+    Serial.print(' ');
+    Serial.print(Clock.getMinute(), DEC);
+    Serial.print(' ');
+    Serial.print(Clock.getSecond(), DEC);
+    if (h12) {
+      if (PM) {
+        Serial.print(" PM ");
+      } else {
+        Serial.print(" AM ");
+      }
+    } else {
+      Serial.println(" 24h ");
+    }
   }
   return date;
-}
 }
 
 //Envoie par SMS le statut
@@ -375,7 +381,7 @@ void sendStatus() {
   gsm.println("\"");
   delay(500);
   gsm.print("Le chauffage est actuellement ");
-  gsm.println(HeatingOn ? "ON" : "OFF"); // This is to show if the light is currently switched on or off
+  gsm.println(heating ? "ON" : "OFF"); // This is to show if the light is currently switched on or off
   gsm.println(getMeteo());
   gsm.println(getDate());
   gsm.print("Consigne: ");
@@ -438,4 +444,10 @@ float eepromReadSavedConsigne() {
     Serial.println(value);
   }
   return value.toFloat();
+}
+
+int getBijunctionState() {
+  return (digitalRead(BIJUNCTION_PIN) ? DISABLED : ENABLED);
+  //si le détecteur renvoie 1 (non présent), la fonction renvoie DISABLED (return 0)
+  //Si le détecteur renvoie 0 (présent), la fonction renvoie ENABLED (return 1)
 }
