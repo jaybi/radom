@@ -37,7 +37,7 @@ enum {
 };
 #define DHT_PIN 9 //Renseigne la pinouille connectée au DHT
 SoftwareSerial gsm(10, 11); // Pins TX,RX du Arduino
-#define RELAY_PIN 12 // Pin connectée au relai
+#define RELAY_PIN 2 // Pin connectée au relai
 #define LED_PIN 13
 //pin 4,5 -> I2C DS3231
 
