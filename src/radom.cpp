@@ -95,13 +95,12 @@ void setup() {
   Serial.begin(9600);//Demarrage Serial
   gsm.begin(9600);//Demarrage GSM
   delay(5000);//Attente accrochage réseau
-  Serial.println("gsm ready...\r\n");
   gsm.println("AT+CREG\r\n");
   delay(1000);
   gsm.println("AT+CMGF=1\r\n");
   delay(1000);
-  //gsm.println("AT+CNMI=2,2,0,0,0\r\n"); //This command selects the procedure
-  //delay(1000);                          //for message reception from the network.
+  gsm.println("AT+CNMI=2,2,0,0,0\r\n"); //This command selects the procedure
+  delay(1000);                          //for message reception from the network.
   gsm.println("AT+CMGD=4\r\n"); //Suppression des SMS
   delay(1000);
 
