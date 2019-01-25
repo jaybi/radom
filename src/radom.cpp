@@ -28,7 +28,7 @@ byte i2c_eeprom_read_byte( int deviceaddress, unsigned int eeaddress );
 void eepromWriteData(float value);
 float eepromReadSavedConsigne();
 int getBijunctionState();
-void readDHT();
+int readDHT();
 
 //Définition des pinouts
 #define BIJUNCTION_PIN 6
@@ -52,6 +52,7 @@ String consigneKeyWord = "Consigne ";
 DHT dht(DHT_PIN, DHTTYPE);
 float humidity;
 float temperature;
+int loops = 0;
 
 //Variables pour la gestion du temps
 DS3231 Clock;
@@ -92,6 +93,7 @@ void setup() {
 
   dht.begin();//Demarrage du DHT
   readDHT();
+  delay(250);
   Serial.begin(9600);//Demarrage Serial
   gsm.begin(9600);//Demarrage GSM
   delay(5000);//Attente accrochage réseau
@@ -268,7 +270,7 @@ void turnOffWithoutMessage() {
 }
 
 //Renvoie un message météo
-void readDHT() {
+int readDHT() {
   // Reading temperature or humidity takes about 250 milliseconds!
   // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
   humidity = dht.readHumidity();
@@ -279,6 +281,7 @@ void readDHT() {
   // Check if any reads failed and exit early (to try again).
   if ((isnan(humidity) || isnan(temperature)) && DEBUG) {
     Serial.println("Failed to read from DHT sensor!");
+    return 1;
   }
 
   if (DEBUG) {
@@ -293,6 +296,7 @@ void readDHT() {
     Serial.print(consigne);
     Serial.println(" *C ");
   }
+  return 0;
 }
 
 String getMeteo() {
