@@ -73,7 +73,7 @@ float newConsigne = 1.0;
 //MODE DEBUG
 //Permet d'afficher le mode débug dans la console
 //Beaucoup plus d'infos apparaissent
-#define DEBUG 1 // 0 pour désactivé et 1 pour activé
+#define DEBUG 0 // 0 pour désactivé et 1 pour activé
 
 //Récupération des données privées qui ne sont pas uploadées dans GITHUB
 PersonalData PersonalData; // Objet contenant les données sensibles
@@ -92,11 +92,10 @@ void setup() {
 
   dht.begin();//Demarrage du DHT
   Serial.begin(9600);//Demarrage Serial
-  while(!Serial);
   Serial.print("Connecting...");
+  delay(5000);
 
   gsm.begin(9600);//Demarrage GSM
-  //delay(5000);
 
   Serial.println("Connected");
 
@@ -104,8 +103,8 @@ void setup() {
   delay(1000);
   gsm.print("AT+CMGF=1\r\n");
   delay(1000);
-  // gsm.println("AT+CNMI=2,2,0,0,0\r\n"); //This command selects the procedure
-  // delay(1000);                          //for message reception from the network.
+  gsm.println("AT+CNMI=2,2,0,0,0\r\n"); //This command selects the procedure
+  delay(1000);                          //for message reception from the network.
   // gsm.println("AT+CMGD=4\r\n"); //Suppression des SMS
   // delay(1000);
 
@@ -115,7 +114,6 @@ void setup() {
     Serial.println(".");
   }
 
-  delay(2000);
 
   consigne = eepromReadSavedConsigne(); //Récupération de la consigne enregistrée
   sendStatus(); //Envoie un SMS avec le statut
