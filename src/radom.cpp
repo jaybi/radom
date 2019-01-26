@@ -36,7 +36,7 @@ enum {
   ENABLED = 1,
   DISABLED = 0
 };
-#define DHT_PIN 9 //Renseigne la pinouille connectée au DHT
+#define DHT_PIN 3 //Renseigne la pinouille connectée au DHT
 SoftwareSerial gsm(10, 11); // Pins TX,RX du Arduino
 #define RELAY_PIN 2 // Pin connectée au relai
 #define LED_PIN 13
@@ -50,7 +50,7 @@ String consigneKeyWord = "Consigne ";
 //Variable et constantes pour la gestion du DHT
 #define DHTTYPE DHT22 // Remplir avec DHT11 ou DHT22 en fonction
 DHT dht(DHT_PIN, DHTTYPE);
-float humidity;
+float humidity = 0;
 float temperature;
 int loops = 0;
 
@@ -73,7 +73,7 @@ float newConsigne = 1.0;
 //MODE DEBUG
 //Permet d'afficher le mode débug dans la console
 //Beaucoup plus d'infos apparaissent
-#define DEBUG 0 // 0 pour désactivé et 1 pour activé
+#define DEBUG 1 // 0 pour désactivé et 1 pour activé
 
 //Récupération des données privées qui ne sont pas uploadées dans GITHUB
 PersonalData PersonalData; // Objet contenant les données sensibles
@@ -90,27 +90,33 @@ void setup() {
   digitalWrite(RELAY_PIN, HIGH); // The current state of the RELAY_PIN is Off Passant à l'état repos (connecté en mode normalement fermé NC)
   heating = false;
 
-
   dht.begin();//Demarrage du DHT
-  readDHT();
-  delay(250);
   Serial.begin(9600);//Demarrage Serial
+  while(!Serial);
+  Serial.print("Connecting...");
+
   gsm.begin(9600);//Demarrage GSM
-  delay(5000);//Attente accrochage réseau
-  gsm.println("AT+CREG\r\n");
+  //delay(5000);
+
+  Serial.println("Connected");
+
+  gsm.print("AT+CREG?\r\n");
   delay(1000);
-  gsm.println("AT+CMGF=1\r\n");
+  gsm.print("AT+CMGF=1\r\n");
   delay(1000);
-  gsm.println("AT+CNMI=2,2,0,0,0\r\n"); //This command selects the procedure
-  delay(1000);                          //for message reception from the network.
-  gsm.println("AT+CMGD=4\r\n"); //Suppression des SMS
-  delay(1000);
+  // gsm.println("AT+CNMI=2,2,0,0,0\r\n"); //This command selects the procedure
+  // delay(1000);                          //for message reception from the network.
+  // gsm.println("AT+CMGD=4\r\n"); //Suppression des SMS
+  // delay(1000);
 
   if(DEBUG) {// Test de la configuration du numéro de téléphone
-    Serial.print("Le numero de telephone que doit appeler lArduino est :");
+    Serial.print("**DEBUG :: Phone number :");
     Serial.print(phoneNumber);
     Serial.println(".");
   }
+
+  delay(2000);
+
   consigne = eepromReadSavedConsigne(); //Récupération de la consigne enregistrée
   sendStatus(); //Envoie un SMS avec le statut
 }
@@ -273,10 +279,11 @@ void turnOffWithoutMessage() {
 int readDHT() {
   // Reading temperature or humidity takes about 250 milliseconds!
   // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
-  humidity = dht.readHumidity();
+  //humidity = dht.readHumidity();
   // Read temperature as Celsius (the default)
+  delay(1000);
   temperature = dht.readTemperature();
-  delay(2000);
+  delay(1000);
 
   // Check if any reads failed and exit early (to try again).
   if ((isnan(humidity) || isnan(temperature)) && DEBUG) {
@@ -286,9 +293,9 @@ int readDHT() {
 
   if (DEBUG) {
     Serial.print("**DEBUG :: readDHT()\t");
-    Serial.print("Humidite: ");
-    Serial.print(humidity);
-    Serial.print(" %\t");
+    // Serial.print("Humidite: ");
+    // Serial.print(humidity);
+    // Serial.print(" %\t");
     Serial.print("Temperature: ");
     Serial.print(temperature);
     Serial.print(" *C\t ");
@@ -304,9 +311,9 @@ String getMeteo() {
   float h = humidity;
   float t = temperature;
 
-  meteo += "Hyg: ";
-  meteo += h;
-  meteo += " % ";
+  // meteo += "Hyg: ";
+  // meteo += h;
+  // meteo += " % ";
   meteo += "Temp: ";
   meteo += t;
   meteo += " *C";
@@ -438,7 +445,7 @@ float eepromReadSavedConsigne() {
     value += char(b);
   }
   if (DEBUG) {
-    Serial.print("**Read value from EEPROM: ");
+    Serial.print("**DEBUG :: eepromReadSavedConsigne()\tRead value from EEPROM: ");
     Serial.println(value);
   }
   return value.toFloat();
