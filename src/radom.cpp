@@ -28,7 +28,7 @@ byte i2c_eeprom_read_byte( int deviceaddress, unsigned int eeaddress );
 void eepromWriteData(float value);
 float eepromReadSavedConsigne();
 int getBijunctionState();
-int readDHT();
+float readDHT();
 
 //Définition des pinouts
 #define BIJUNCTION_PIN 6
@@ -50,9 +50,6 @@ String consigneKeyWord = "Consigne ";
 //Variable et constantes pour la gestion du DHT
 #define DHTTYPE DHT22 // Remplir avec DHT11 ou DHT22 en fonction
 DHT dht(DHT_PIN, DHTTYPE);
-float humidity = 0;
-float temperature;
-int loops = 0;
 
 //Variables pour la gestion du temps
 DS3231 Clock;
@@ -121,6 +118,7 @@ void setup() {
 
 /*LOOP************************************************************************/
 void loop() {
+
   if (gsm.available() > 0) {
     textMessage = gsm.readString();
     if (DEBUG) {
@@ -174,8 +172,7 @@ void loop() {
   }
 }
 
-//Envoi du "Message" par sms
-void sendMessage(String message) {
+void sendMessage(String message) {//Envoi du "Message" par sms
   gsm.print("AT+CMGS=\"");
   gsm.print(phoneNumber);
   gsm.println("\"");
@@ -184,8 +181,7 @@ void sendMessage(String message) {
   gsm.write( 0x1a ); //Permet l'envoi du sms
 }
 
-//Réglage de la consigne contenue dans le message à l'indexConsigne
-void setConsigne(String message, int indexConsigne) {
+void setConsigne(String message, int indexConsigne) {//Réglage de la consigne contenue dans le message à l'indexConsigne
   newConsigne = message.substring(indexConsigne + consigneKeyWord.length(), message.length()).toFloat(); // On extrait la valeur et on la cast en float
   Serial.print("nouvelle consigne :");
   Serial.println(newConsigne);
@@ -211,10 +207,9 @@ void setConsigne(String message, int indexConsigne) {
     sendMessage("Cette consigne est deja enregistree");
   }
 }
-//Vérification de le temp, comparaison avec la consigne,
-//et activation/désactivation en fonction
-void heatingProg(){
-  readDHT(); //lecture du DHT afin de mettre à jour les variables de météo
+
+void heatingProg(){//Vérification de le temp, comparaison avec la consigne, et activation/désactivation en fonction
+  float temperature = readDHT(); //lecture du DHT afin de mettre à jour les variables de météo
   if ((temperature < (consigne - 0.5*hysteresis)) && (heating == DISABLED)) {
     turnOnWithoutMessage();
   }
@@ -223,8 +218,7 @@ void heatingProg(){
   }
 }
 
-//allumage du radiateur si pas de consigne et envoi de SMS
-void turnOn() {
+void turnOn() {//allumage du radiateur si pas de consigne et envoi de SMS
   gsm.print("AT+CMGS=\"");
   gsm.print(phoneNumber);
   gsm.println("\"");
@@ -240,15 +234,13 @@ void turnOn() {
   gsm.write( 0x1a ); //Permet l'envoi du sms
 }
 
-//allumage du radiateur si pas de consigne
-void turnOnWithoutMessage() {
+void turnOnWithoutMessage() {//allumage du radiateur si pas de consigne
   // Turn on RELAY_PIN and save current state
   digitalWrite(RELAY_PIN, LOW);
   heating = ENABLED;
 }
 
-//Extinction du rad si pas de consigne et envoie de SMS
-void turnOff() {
+void turnOff() {//Extinction du rad si pas de consigne et envoie de SMS
   gsm.print("AT+CMGS=\"");
   gsm.print(phoneNumber);
   gsm.println("\"");
@@ -265,30 +257,26 @@ void turnOff() {
   previousState = ENABLED;
 }
 
-//Extinction du rad si pas de consigne
-void turnOffWithoutMessage() {
+void turnOffWithoutMessage() {//Extinction du rad si pas de consigne
   // Turn on RELAY_PIN and save current state
   digitalWrite(RELAY_PIN, HIGH);
   heating = DISABLED;
   previousState = ENABLED;
 }
 
-//Renvoie un message météo
-int readDHT() {
+float readDHT() { // Se connecte au DHT et renvoie la temperature
   // Reading temperature or humidity takes about 250 milliseconds!
   // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
   //humidity = dht.readHumidity();
   // Read temperature as Celsius (the default)
+  //delay(1000);
+  float temperature = dht.readTemperature();
   delay(1000);
-  temperature = dht.readTemperature();
-  delay(1000);
-
   // Check if any reads failed and exit early (to try again).
-  if ((isnan(humidity) || isnan(temperature)) && DEBUG) {
+  if (isnan(temperature) && DEBUG) {
     Serial.println("Failed to read from DHT sensor!");
-    return 1;
+    return 100;
   }
-
   if (DEBUG) {
     Serial.print("**DEBUG :: readDHT()\t");
     // Serial.print("Humidite: ");
@@ -301,21 +289,23 @@ int readDHT() {
     Serial.print(consigne);
     Serial.println(" *C ");
   }
-  return 0;
+  return temperature;
 }
 
-String getMeteo() {
+String getMeteo() { //Renvoie un string contenant le message météo
   String meteo = "";
-  float h = humidity;
-  float t = temperature;
-
+  float t = readDHT();
+  if (t != 100) {
+    meteo += "Temp: ";
+    meteo += t;
+    meteo += " *C";
+    return meteo;
+  } else {
+    return "Error reading DHT";
+  }
   // meteo += "Hyg: ";
   // meteo += h;
   // meteo += " % ";
-  meteo += "Temp: ";
-  meteo += t;
-  meteo += " *C";
-  return meteo;
 }
 
 //Renvoie la date
@@ -376,9 +366,6 @@ String getDate() {
 
 //Envoie par SMS le statut
 void sendStatus() {
-  if (program == DISABLED) { // Si la programmation est désactivée, il faut faire
-    readDHT();               // une lecture du DHT pour rafraichir les variables
-  }
   gsm.print("AT+CMGS=\"");
   gsm.print(phoneNumber);
   gsm.println("\"");
