@@ -44,8 +44,6 @@ SoftwareSerial gsm(10, 11); // Pins TX,RX du Arduino
 
 //Variables de texte
 String textMessage;
-String meteoMessage = "";
-String consigneKeyWord = "Consigne ";
 int index = 0;
 
 //Variable et constantes pour la gestion du DHT
@@ -120,7 +118,6 @@ void setup() {
 /*LOOP************************************************************************/
 void loop() {
   char* commandList[] = {"Ron", "Roff", "Status", "Progon", "Progoff", "Consigne"};
-
   int command = -1;
 
   if (gsm.available() > 0) {
@@ -165,28 +162,7 @@ void loop() {
       }
     }
   }
-  // if (textMessage.indexOf("+CMT:") > 0 ){ // SMS arrived
-  //   if (textMessage.indexOf("Ron") >= 0) { //If you sent "ON" the lights will turn on
-  //   turnOn();
-  // } else if (textMessage.indexOf("Roff") >= 0) {
-  //   turnOff();
-  // } else if (textMessage.indexOf("Status") >= 0) {
-  //   sendStatus();
-  // } else if (textMessage.indexOf("Progon") >= 0) {
-  //   program = ENABLED;
-  //   sendMessage("Programme actif");
-  //   digitalWrite(LED_PIN, HIGH);
-  // } else if (textMessage.indexOf("Progoff") >= 0) {
-  //   program = DISABLED;
-  //   sendMessage("Programme inactif");
-  //   digitalWrite(LED_PIN, LOW);
-  //   turnOff();
-  // } else if (textMessage.indexOf(consigneKeyWord) >= 0) { //Mot clé de changement de consigne trouvé dans le SMS
-  //   setConsigne(textMessage, textMessage.indexOf(consigneKeyWord));
-  // }
-  // textMessage="";
-  // delay(100);
-  // }
+
   if (program == ENABLED) {
     heatingProg();
   }
@@ -210,6 +186,7 @@ void loop() {
       }
     }
   }
+  delay(100);
 }
 
 void sendMessage(String message) {//Envoi du "Message" par sms
@@ -222,7 +199,7 @@ void sendMessage(String message) {//Envoi du "Message" par sms
 }
 
 void setConsigne(String message, int indexConsigne) {//Réglage de la consigne contenue dans le message à l'indexConsigne
-  newConsigne = message.substring(indexConsigne + consigneKeyWord.length(), message.length()).toFloat(); // On extrait la valeur et on la cast en float
+  newConsigne = message.substring(indexConsigne + 9, message.length()).toFloat(); // On extrait la valeur et on la cast en float // 9 = "Consigne ".length()
   Serial.print("nouvelle consigne :");
   Serial.println(newConsigne);
   if (!newConsigne) {// Gestion de l'erreur de lecture et remontée du bug
@@ -231,7 +208,7 @@ void setConsigne(String message, int indexConsigne) {//Réglage de la consigne c
       Serial.print("indexConsigne = ");
       Serial.println(indexConsigne);
       Serial.print("consigne lenght (>0)= ");
-      Serial.println(message.length()- indexConsigne + consigneKeyWord.length());
+      Serial.println(message.length()- indexConsigne + 9);
       Serial.print("newConsigne = ");
       Serial.println(newConsigne);
     } else {
