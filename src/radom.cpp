@@ -6,6 +6,7 @@
 //et DHT sensor library by Adafruit
 #include <Adafruit_Sensor.h>
 #include <DHT.h>
+#include <DHT_U.h>
 //installer la librairie DS3231 by Jean-Claude Wippler
 #include <DS3231.h>
 #include <Wire.h>
@@ -48,7 +49,8 @@ int index = 0;
 
 //Variable et constantes pour la gestion du DHT
 #define DHTTYPE DHT22 // Remplir avec DHT11 ou DHT22 en fonction
-DHT dht(DHT_PIN, DHTTYPE);
+DHT_Unified dht(DHT_PIN, DHTTYPE);
+uint32_t delayMS;
 
 //Variables pour la gestion du temps
 DS3231 Clock;
@@ -87,6 +89,21 @@ void setup() {
   heating = false;
 
   dht.begin();//Demarrage du DHT
+  sensor_t sensor;
+  dht.temperature().getSensor(&sensor);
+  if(DEBUG) {// Test de la configuration du numéro de téléphone
+    Serial.print("**DEBUG :: DHT infos :");
+    Serial.println(F("Temperature Sensor"));
+    Serial.print  (F("Sensor Type: ")); Serial.println(sensor.name);
+    Serial.print  (F("Driver Ver:  ")); Serial.println(sensor.version);
+    Serial.print  (F("Unique ID:   ")); Serial.println(sensor.sensor_id);
+    Serial.print  (F("Max Value:   ")); Serial.print(sensor.max_value); Serial.println(F("°C"));
+    Serial.print  (F("Min Value:   ")); Serial.print(sensor.min_value); Serial.println(F("°C"));
+    Serial.println(F("Resolution:  ")); Serial.print(sensor.resolution); Serial.println(F("°C"));
+  }
+  // Set delay between sensor readings based on sensor details.
+  delayMS = sensor.min_delay / 1000;
+
   Serial.begin(9600);//Demarrage Serial
   Serial.print("Connecting...");
   delay(5000);
@@ -282,26 +299,21 @@ void turnOffWithoutMessage() {//Extinction du rad si pas de consigne
 }
 
 float readDHT() { // Se connecte au DHT et renvoie la temperature
-  // Reading temperature or humidity takes about 250 milliseconds!
-  // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
-  //humidity = dht.readHumidity();
-  // Read temperature as Celsius (the default)
-  //delay(1000);
-  float temperature = dht.readTemperature();
-  delay(1000);
-  // Check if any reads failed and exit early (to try again).
-  if (isnan(temperature) && DEBUG) {
-    Serial.println("Failed to read from DHT sensor!");
-    return 100;
+  delay(delayMS);
+  sensors_event_t event;
+  float temperature = 100.00;
+  dht.temperature().getEvent(&event);
+  if (isnan(event.temperature)) {
+      Serial.println(F("Error reading temperature!"));
+  } else {
+    temperature = event.temperature;
   }
+  // Check if any reads failed and exit early (to try again).
   if (DEBUG) {
     Serial.print("**DEBUG :: readDHT()\t");
-    // Serial.print("Humidite: ");
-    // Serial.print(humidity);
-    // Serial.print(" %\t");
-    Serial.print("Temperature: ");
-    Serial.print(temperature);
-    Serial.print(" *C\t ");
+    Serial.print(F("Temperature: "));
+    Serial.print(event.temperature);
+    Serial.println(F("*C"));
     Serial.print("Consigne: ");
     Serial.print(consigne);
     Serial.println(" *C ");
