@@ -134,7 +134,7 @@ void setup() {
 
 /*LOOP************************************************************************/
 void loop() {
-  char* commandList[] = {"Ron", "Roff", "Status", "Progon", "Progoff", "Consigne"};
+  const char* commandList[] = {"Ron", "Roff", "Status", "Progon", "Progoff", "Consigne"};
   int command = -1;
 
   if (gsm.available() > 0) {
@@ -151,27 +151,27 @@ void loop() {
         }
       }
       switch (command) {
-        case 0:
+        case 0: // Ron
           turnOn();
           break;
-        case 1:
+        case 1: // Roff
           turnOff();
           break;
-        case 2:
+        case 2: // Status
           sendStatus();
           break;
-        case 3:
+        case 3: // Progon
           program = ENABLED;
           sendMessage("Programme actif");
           digitalWrite(LED_PIN, HIGH);
           break;
-        case 4:
+        case 4: // Progoff
           program = DISABLED;
           sendMessage("Programme inactif");
           digitalWrite(LED_PIN, LOW);
           turnOff();
           break;
-        case 5:
+        case 5: // Consigne
           setConsigne(textMessage, index);
           break;
         default:
