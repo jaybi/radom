@@ -31,12 +31,12 @@ int getBijunctionState();
 float readDHT();
 
 //Définition des pinouts
-#define BIJUNCTION_PIN 6
+#define BIJUNCTION_PIN 3
 enum {
   ENABLED = 1,
   DISABLED = 0
 };
-#define DHT_PIN 3 //Renseigne la pinouille connectée au DHT
+#define DHT_PIN 6 //Renseigne la pinouille connectée au DHT
 SoftwareSerial gsm(10, 11); // Pins TX,RX du Arduino
 #define RELAY_PIN 2 // Pin connectée au relai
 #define LED_PIN 13
