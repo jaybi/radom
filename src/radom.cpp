@@ -137,45 +137,49 @@ void loop() {
   const char* commandList[] = {"Ron", "Roff", "Status", "Progon", "Progoff", "Consigne"};
   int command = -1;
 
-  if (gsm.available() > 0) {
+  if (gsm.available() > 0) { // Si un SMS arrive
     textMessage = gsm.readString();
     if (DEBUG) {
       Serial.print(textMessage);
     }
-    if (textMessage.indexOf("+CMT:") > 0 ){ // SMS arrived
-      for(int i = 0; i<6; i++) {
-        if (textMessage.indexOf(commandList[i]) > 0) {
-          command = i;
-          index = textMessage.indexOf(commandList[i]);
-          break; //Permet de sortir du for des que le cas est validé
+    if (textMessage.indexOf(phoneNumber) > 0) {//TODO: vérifier l'origine du SMS et ne traiter que les SMS qui viennent d'un numéro donné (le mien)
+    //TODO: ne pas tester que le numéro, mais aussi le texte qui vient avant OU la position. Car un utilisateur malveillant pourrait placer
+    //le numéro dans le corps du message pour tromper le systeme. Tester la position du numéro
+      if (textMessage.indexOf("+CMT:") > 0 ){ // SMS arrived
+        for(int i = 0; i<6; i++) {
+          if (textMessage.indexOf(commandList[i]) > 0) {//Recherche un terme dans la liste commandList[]
+            command = i;
+            index = textMessage.indexOf(commandList[i]);
+            break; //Permet de sortir du for des que le cas est validé
+          }
         }
-      }
-      switch (command) {
-        case 0: // Ron
-          turnOn();
-          break;
-        case 1: // Roff
-          turnOff();
-          break;
-        case 2: // Status
-          sendStatus();
-          break;
-        case 3: // Progon
-          program = ENABLED;
-          sendMessage("Programme actif");
-          digitalWrite(LED_PIN, HIGH);
-          break;
-        case 4: // Progoff
-          program = DISABLED;
-          sendMessage("Programme inactif");
-          digitalWrite(LED_PIN, LOW);
-          turnOff();
-          break;
-        case 5: // Consigne
-          setConsigne(textMessage, index);
-          break;
-        default:
-          break;
+        switch (command) {
+          case 0: // Ron
+            turnOn();
+            break;
+          case 1: // Roff
+            turnOff();
+            break;
+          case 2: // Status
+            sendStatus();
+            break;
+          case 3: // Progon
+            program = ENABLED;
+            sendMessage("Programme actif");
+            digitalWrite(LED_PIN, HIGH);
+            break;
+          case 4: // Progoff
+            program = DISABLED;
+            sendMessage("Programme inactif");
+            digitalWrite(LED_PIN, LOW);
+            turnOff();
+            break;
+          case 5: // Consigne
+            setConsigne(textMessage, index);
+            break;
+          default:
+            break;
+        }
       }
     }
   }
