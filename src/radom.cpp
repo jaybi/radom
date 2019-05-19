@@ -14,6 +14,7 @@
 #include <EEPROM.h>
 
 // Liste des fonctions
+void readSMS(String message);
 void sendMessage(String message);
 void setConsigne(String message, int indexConsigne);
 void heatingProg();
@@ -76,6 +77,7 @@ float newConsigne = 1.0;
 //Récupération des données privées qui ne sont pas uploadées dans GITHUB
 PersonalData PersonalData; // Objet contenant les données sensibles
 String phoneNumber = PersonalData.getPhoneNumber();
+String pinNumber = PersonalData.getPinNumber();
 
 /*SETUP************************************************************************/
 void setup() {
@@ -91,17 +93,8 @@ void setup() {
   dht.begin();//Demarrage du DHT
   sensor_t sensor;
   dht.temperature().getSensor(&sensor);
-  if(DEBUG) {// Test de la configuration du numéro de téléphone
-    Serial.print("**DEBUG :: DHT infos :");
-    Serial.println(F("Temperature Sensor"));
-    Serial.print  (F("Sensor Type: ")); Serial.println(sensor.name);
-    Serial.print  (F("Driver Ver:  ")); Serial.println(sensor.version);
-    Serial.print  (F("Unique ID:   ")); Serial.println(sensor.sensor_id);
-    Serial.print  (F("Max Value:   ")); Serial.print(sensor.max_value); Serial.println(F("°C"));
-    Serial.print  (F("Min Value:   ")); Serial.print(sensor.min_value); Serial.println(F("°C"));
-    Serial.println(F("Resolution:  ")); Serial.print(sensor.resolution); Serial.println(F("°C"));
-  }
-  // Set delay between sensor readings based on sensor details.
+
+  //Set delay between sensor readings based on sensor details.
   delayMS = sensor.min_delay / 1000;
 
   Serial.begin(9600);//Demarrage Serial
@@ -121,12 +114,27 @@ void setup() {
   // gsm.println("AT+CMGD=4\r\n"); //Suppression des SMS
   // delay(1000);
 
+
+
   if(DEBUG) {// Test de la configuration du numéro de téléphone
     Serial.print("**DEBUG :: Phone number :");
     Serial.print(phoneNumber);
     Serial.println(".");
+    Serial.print("**DEBUG :: Pin number :");
+    Serial.print(pinNumber);
+    Serial.println(".");
   }
 
+  if(DEBUG) {// Test de la configuration
+    Serial.print("**DEBUG :: DHT infos :");
+    Serial.println(F("Temperature Sensor"));
+    Serial.print  (F("Sensor Type: ")); Serial.println(sensor.name);
+    Serial.print  (F("Driver Ver:  ")); Serial.println(sensor.version);
+    Serial.print  (F("Unique ID:   ")); Serial.println(sensor.sensor_id);
+    Serial.print  (F("Max Value:   ")); Serial.print(sensor.max_value); Serial.println(F("°C"));
+    Serial.print  (F("Min Value:   ")); Serial.print(sensor.min_value); Serial.println(F("°C"));
+    Serial.println(F("Resolution:  ")); Serial.print(sensor.resolution); Serial.println(F("°C"));
+  }
 
   consigne = eepromReadSavedConsigne(); //Récupération de la consigne enregistrée
   sendStatus(); //Envoie un SMS avec le statut
@@ -134,49 +142,33 @@ void setup() {
 
 /*LOOP************************************************************************/
 void loop() {
-  const char* commandList[] = {"Ron", "Roff", "Status", "Progon", "Progoff", "Consigne"};
-  int command = -1;
-
   if (gsm.available() > 0) {
     textMessage = gsm.readString();
     if (DEBUG) {
-      Serial.print(textMessage);
+      Serial.println(textMessage);
     }
-    if (textMessage.indexOf("+CMT:") > 0 ){ // SMS arrived
-      for(int i = 0; i<6; i++) {
-        if (textMessage.indexOf(commandList[i]) > 0) {
-          command = i;
-          index = textMessage.indexOf(commandList[i]);
-          break; //Permet de sortir du for des que le cas est validé
-        }
+    //Cas nominal avec le numéro de tel par défaut
+    if ( (textMessage.indexOf(phoneNumber)) < 10 && textMessage.indexOf(phoneNumber) > 0) { // SMS arrived
+      readSMS(textMessage);
+    }
+    //Permet de prendre la main pour le controle du système
+    else if (textMessage.indexOf(pinNumber) < 51 && textMessage.indexOf(pinNumber) > 0) {
+      int indexOfPhoneNumber = textMessage.indexOf("+",5);
+      int finalIndexOfPhoneNumber = textMessage.indexOf("\"", indexOfPhoneNumber);
+      String newPhoneNumber = textMessage.substring(indexOfPhoneNumber,finalIndexOfPhoneNumber);
+      String information = "Nouveau numero enregistre : ";
+      information.concat(newPhoneNumber);
+      sendMessage(information);
+      phoneNumber=newPhoneNumber;
+      if (DEBUG) {
+        Serial.print("First index : ");
+        Serial.println(indexOfPhoneNumber);
+        Serial.print("Last index : ");
+        Serial.println(finalIndexOfPhoneNumber);
+        Serial.print("New Phone number : ");
+        Serial.println(phoneNumber);
       }
-      switch (command) {
-        case 0: // Ron
-          turnOn();
-          break;
-        case 1: // Roff
-          turnOff();
-          break;
-        case 2: // Status
-          sendStatus();
-          break;
-        case 3: // Progon
-          program = ENABLED;
-          sendMessage("Programme actif");
-          digitalWrite(LED_PIN, HIGH);
-          break;
-        case 4: // Progoff
-          program = DISABLED;
-          sendMessage("Programme inactif");
-          digitalWrite(LED_PIN, LOW);
-          turnOff();
-          break;
-        case 5: // Consigne
-          setConsigne(textMessage, index);
-          break;
-        default:
-          break;
-      }
+      readSMS(textMessage);
     }
   }
 
@@ -206,40 +198,81 @@ void loop() {
   delay(100);
 }
 
+/*FUNCTIONS*******************************************************************/
+void readSMS(String textMessage) {
+  const char* commandList[] = {"Ron", "Roff", "Status", "Progon", "Progoff", "Consigne"};
+  int command = -1;
+
+  for(int i = 0; i<6; i++) {
+    if (textMessage.indexOf(commandList[i]) > 0) {
+      command = i;
+      index = textMessage.indexOf(commandList[i]);
+      break; //Permet de sortir du for des que le cas est validé
+    }
+  }
+  switch (command) {
+    case 0: // Ron
+    turnOn();
+    break;
+    case 1: // Roff
+    turnOff();
+    break;
+    case 2: // Status
+    sendStatus();
+    break;
+    case 3: // Progon
+    program = ENABLED;
+    sendMessage("Programme actif");
+    digitalWrite(LED_PIN, HIGH);
+    break;
+    case 4: // Progoff
+    program = DISABLED;
+    sendMessage("Programme inactif");
+    digitalWrite(LED_PIN, LOW);
+    turnOff();
+    break;
+    case 5: // Consigne
+    setConsigne(textMessage, index);
+    break;
+    default:
+    break;
+  }
+}
+
 void sendMessage(String message) {//Envoi du "Message" par sms
-  gsm.print("AT+CMGS=\"");
-  gsm.print(phoneNumber);
-  gsm.println("\"");
-  delay(500);
-  gsm.print(message);
-  gsm.write( 0x1a ); //Permet l'envoi du sms
+gsm.print("AT+CMGS=\"");
+gsm.print(phoneNumber);
+gsm.println("\"");
+delay(500);
+gsm.print(message);
+gsm.write( 0x1a ); //Permet l'envoi du sms
 }
 
 void setConsigne(String message, int indexConsigne) {//Réglage de la consigne contenue dans le message à l'indexConsigne
-  newConsigne = message.substring(indexConsigne + 9, message.length()).toFloat(); // On extrait la valeur et on la cast en float // 9 = "Consigne ".length()
-  Serial.print("nouvelle consigne :");
+newConsigne = message.substring(indexConsigne + 9, message.length()).toFloat(); // On extrait la valeur et on la cast en float // 9 = "Consigne ".length()
+Serial.print("nouvelle consigne :");
+Serial.println(newConsigne);
+if (!newConsigne) {// Gestion de l'erreur de lecture et remontée du bug
+if (DEBUG) {
+  Serial.println("Impossible d'effectuer la conversion de la température String -> Float. Mauvais mot-clé? Mauvais index?");
+  Serial.print("indexConsigne = ");
+  Serial.println(indexConsigne);
+  Serial.print("consigne lenght (>0)= ");
+  Serial.println(message.length()- indexConsigne + 9);
+  Serial.print("newConsigne = ");
   Serial.println(newConsigne);
-  if (!newConsigne) {// Gestion de l'erreur de lecture et remontée du bug
-    if (DEBUG) {
-      Serial.println("Impossible d'effectuer la conversion de la température String -> Float. Mauvais mot-clé? Mauvais index?");
-      Serial.print("indexConsigne = ");
-      Serial.println(indexConsigne);
-      Serial.print("consigne lenght (>0)= ");
-      Serial.println(message.length()- indexConsigne + 9);
-      Serial.print("newConsigne = ");
-      Serial.println(newConsigne);
-    } else {
-    sendMessage("Erreur de lecture de la consigne envoyee");
-    }
-  } else if (consigne != newConsigne) { //Si tout se passe bien et la consigne est différente la consigne actuelle
-    consigne = newConsigne;
-    message = "La nouvelle consigne est de ";
-    message.concat(consigne);
-    sendMessage(message);
-    eepromWriteData(consigne);//Enregistrement dans l'EEPROM
-  } else {
-    sendMessage("Cette consigne est deja enregistree");
-  }
+} else {
+  sendMessage("Erreur de lecture de la consigne envoyee");
+}
+} else if (consigne != newConsigne) { //Si tout se passe bien et la consigne est différente la consigne actuelle
+  consigne = newConsigne;
+  message = "La nouvelle consigne est de ";
+  message.concat(consigne);
+  sendMessage(message);
+  eepromWriteData(consigne);//Enregistrement dans l'EEPROM
+} else {
+  sendMessage("Cette consigne est deja enregistree");
+}
 }
 
 void heatingProg(){//Vérification de le temp, comparaison avec la consigne, et activation/désactivation en fonction
@@ -304,7 +337,7 @@ float readDHT() { // Se connecte au DHT et renvoie la temperature
   float temperature = 100.00;
   dht.temperature().getEvent(&event);
   if (isnan(event.temperature)) {
-      Serial.println(F("Error reading temperature!"));
+    Serial.println(F("Error reading temperature!"));
   } else {
     temperature = event.temperature;
   }
@@ -313,8 +346,8 @@ float readDHT() { // Se connecte au DHT et renvoie la temperature
     Serial.print("**DEBUG :: readDHT()\t");
     Serial.print(F("Temperature: "));
     Serial.print(event.temperature);
-    Serial.println(F("*C"));
-    Serial.print("Consigne: ");
+    Serial.print(F("*C"));
+    Serial.print(" Consigne: ");
     Serial.print(consigne);
     Serial.println(" *C ");
   }
@@ -364,33 +397,33 @@ String getDate() {
     Serial.print("2");
     if (Century) {      // Won't need this for 89 years.
     Serial.print("1");
-    } else {
-      Serial.print("0");
-    }
-    Serial.print(Clock.getYear(), DEC);
-    Serial.print(' ');
-    Serial.print(Clock.getMonth(Century), DEC);
-    Serial.print(' ');
-    Serial.print(Clock.getDate(), DEC);
-    Serial.print(' ');
-    Serial.print(Clock.getDoW(), DEC);
-    Serial.print(' ');
-    Serial.print(Clock.getHour(h12, PM), DEC);
-    Serial.print(' ');
-    Serial.print(Clock.getMinute(), DEC);
-    Serial.print(' ');
-    Serial.print(Clock.getSecond(), DEC);
-    if (h12) {
-      if (PM) {
-        Serial.print(" PM ");
-      } else {
-        Serial.print(" AM ");
-      }
-    } else {
-      Serial.println(" 24h ");
-    }
+  } else {
+    Serial.print("0");
   }
-  return date;
+  Serial.print(Clock.getYear(), DEC);
+  Serial.print(' ');
+  Serial.print(Clock.getMonth(Century), DEC);
+  Serial.print(' ');
+  Serial.print(Clock.getDate(), DEC);
+  Serial.print(' ');
+  Serial.print(Clock.getDoW(), DEC);
+  Serial.print(' ');
+  Serial.print(Clock.getHour(h12, PM), DEC);
+  Serial.print(' ');
+  Serial.print(Clock.getMinute(), DEC);
+  Serial.print(' ');
+  Serial.print(Clock.getSecond(), DEC);
+  if (h12) {
+    if (PM) {
+      Serial.print(" PM ");
+    } else {
+      Serial.print(" AM ");
+    }
+  } else {
+    Serial.println(" 24h ");
+  }
+}
+return date;
 }
 
 //Envoie par SMS le statut
@@ -435,7 +468,7 @@ void eepromWriteData(float value) {
   String stringValue = String(value);
   int valueLength = sizeof(stringValue);
   if (valueLength < 32) { //A priori il existe une limite, voir dans AT24C32_examples
-    if (DEBUG) {
+    if (0) {// ATTENTION: génère une erreur quand actif
       Serial.print("**DEBUG :: eepromWriteData()\t");
       Serial.print("Longueur de la consigne : ");
       Serial.println(valueLength-1);
@@ -458,8 +491,9 @@ float eepromReadSavedConsigne() {
     b = i2c_eeprom_read_byte(0x57, i); //access an address from the memory
     value += char(b);
   }
-  if (DEBUG) {
-    Serial.print("**DEBUG :: eepromReadSavedConsigne()\tRead value from EEPROM: ");
+  if (0) {
+    Serial.print("**DEBUG :: eepromReadSavedConsigne()");
+    Serial.print("\tRead value: "); //ATTENTION : le 18/5/19 ce message provoquait une erreur quand il était plus long
     Serial.println(value);
   }
   return value.toFloat();
