@@ -68,6 +68,9 @@ int program = DISABLED; // Programmation active ou non
 #define hysteresis 1.0
 float consigne;
 float newConsigne = 1.0;
+const float temperatureOffset = -3.0; /*Dépend des conditions extérieures.
+Ici pour corriger l'issue #2 : la température mesurée était de 21° pour une
+température réelle de 18°*/
 
 //MODE DEBUG
 //Permet d'afficher le mode débug dans la console
@@ -274,7 +277,7 @@ if (DEBUG) {
 }
 
 void heatingProg(){//Vérification de le temp, comparaison avec la consigne, et activation/désactivation en fonction
-  float temperature = readDHT(); //lecture du DHT afin de mettre à jour les variables de météo
+  float temperature = readDHT() + temperatureOffset ; //lecture du DHT afin de mettre à jour les variables de météo
   if ((temperature < (consigne - 0.5*hysteresis)) && (heating == DISABLED)) {
     turnOnWithoutMessage();
   }
@@ -354,7 +357,7 @@ float readDHT() { // Se connecte au DHT et renvoie la temperature
 
 String getMeteo() { //Renvoie un string contenant le message météo
   String meteo = "";
-  float t = readDHT();
+  float t = readDHT() + temperatureOffset;
   if (t != 100) {
     meteo += "Temp: ";
     meteo += t;
